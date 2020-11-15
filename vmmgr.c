@@ -18,7 +18,7 @@ int main(int argc, char *argv[]){
 
   FILE *fp;
   int numAddresses;
-  char buffer[100000]; //contents in addresses.txt
+  char buffer[6830]; //contents in addresses.txt
 
   if (argc != 2) {
        printf("Usage: %s <addresses.txt> \n", argv[0]);
@@ -34,9 +34,15 @@ int main(int argc, char *argv[]){
     exit(1);
   }
   numAddresses = fread(buffer,sizeof(char),sizeof(buffer),fp);
-  printf("number of items read=  %d\n", numAddresses);
+  //sprintf("number of items read=  %d\n", numAddresses);  6831
+
   //printf( "Contents of buffer = %.100000s\n", buffer );
-  printf("%s",buffer);
+  //printf("%s",buffer);
+
+  for(int i=0;i<sizeof(buffer);i++){
+    printf("%c",buffer[i]);
+  }
+
   fclose(fp);
 
   //convert int to binary for offset calc
