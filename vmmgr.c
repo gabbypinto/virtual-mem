@@ -16,19 +16,44 @@
 
 typedef struct{
   //we're ints before
-  unsigned char tag; //logical address
-  unsigned char  physicalPageNumber; //physical address
+  unsigned char logicalPageNumber;
+  unsigned char  physicalPageNumber;
 } tlbObject;
 
-int searchTlbTable(unsigned char logPage){
-  int i;
+tlbObject *tlb;
+
+int searchTlbTable(int logicalAddress){
+  for(int i=0; i<TLB_ENTRIES;i++){
+    if(tlb[i].logicalPageNumber==logicalAddress)
+      return tlb[i].physicalPageNumber;
+  }
   return -1;
+}
+
+int addToTable(int logicalAddress, int physicalAddress){
+  for(int i=0;i<TLB_ENTRIES;i++){
+    if(tlb[i].logicalPageNumber==0){
+      tlb[i].logicalPageNumber=logicalAddress;
+      tlb[i].physicalPageNumber=physicalAddress;
+      return 0;
+    }
+  }
+  for(int i=1;i<TLB_ENTRIES;i++){
+    tlb[i-1].logicalPageNumber=tlb[i].logicalPageNumber;
+    tlb[i-1].physicalPageNumber=tlb[i].physicalPageNumber;
+  }
+
+
+  tlb[TLB_ENTRIES-1].logicalPageNumber=logicalAddress;
+  tlb[TLB_ENTRIES-1].physicalPageNumber=physicalAddress;
+  return 0;
 }
 
 
 int main(int argc, char *argv[]){
-  tlbObject *tlb;
+
   tlb = malloc(TLB_ENTRIES);
+  printf("%d",tlb[0].logicalPageNumber);
 
   FILE *fp;
   int numAddresses = 0; //total num addresses
@@ -68,7 +93,8 @@ int main(int argc, char *argv[]){
   //   printf("buffer elem size: %lu \n",sizeof(atoi(&buffer[i])));
   //   if(buffer[i]=='\n'){
   //     printf("hi\n");
-  //   }
+  // }
+
   //
   //   // numAddresses++;
   //   // int logicalAddress = atoi(&buffer[i]);
@@ -83,17 +109,33 @@ int main(int argc, char *argv[]){
   //   count++;
   // //
   // }
+  int *pageTable;
+  pageTable = malloc(PAGES);
+  printf("size: %lu\n",sizeof(pageTable));
+  for(int i = 0; i<sizeof(pageTable);i++){
+    printf("%d",pageTable[i]);
+  }
+
 
   while(fgets(buffer,6830,fp)!=NULL){
     printf("%s",buffer);
     numAddresses++;
     int logicalAddress = atoi(buffer);
-    printf("logical address: %d\n",logicalAddress);
+    //printf("logical address: %d\n",logicalAddress);
     int offset = logicalAddress % 256;
-    printf("offset: %d\n",offset);
+  //  printf("offset: %s\n",offset);
     int logicalPage = logicalAddress/256;
-    printf("logical page: %d\n", logicalPage);
-    int physicalPage; //search in tbh
+    //printf("logical page: %s\n", logicalPage);
+    int physicalPage=searchTlbTable(logicalPage);
+    if(physicalPage !=-1){
+      tlbHits++;
+    }
+    else{
+      //calculate physicalPage
+
+      addToTable(logicalPage, physicalPage);
+    }
+
     printf("\n ");
     if(count==5){
       break;
