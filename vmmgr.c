@@ -3,57 +3,62 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+
 #define TLB_ENTRIES 16
 #define PAGE_SIZE 256  //page size of 256 bytes
 #define PAGES 256  //pages begin at 0-255
 #define MEMORY_SIZE PAGES * PAGE_SIZE  //bin file size of 65,536 bytes
 #define OFFSET 8   //offset bits
-
+#define BUFFER_SIZE 16
 #define PAGE_MASK 255  //see page table
 #define OFFSET_MASK 255 //0-255 see physical mem table
 
 
 
 typedef struct{
-  //we're ints before
-  unsigned char logicalPageNumber;
-  unsigned char  physicalPageNumber;
+  int logicalPageNumber;
+  int  physicalPageNumber;
 } tlbObject;
 
-tlbObject *tlb;
+tlbObject tlb[TLB_ENTRIES];
+int tlbIdx = 0;
 
-int searchTlbTable(int logicalAddress){
-  for(int i=0; i<TLB_ENTRIES;i++){
-    if(tlb[i].logicalPageNumber==logicalAddress)
-      return tlb[i].physicalPageNumber;
+int pageTable[PAGES];  //page table
+
+char *backingChars; //point to store file
+
+char mainMem[MEMORY_SIZE];
+
+int max(int x,int y){
+  if(x>y){
+    return x;
+  }
+  return y;
+}
+
+int searchTlbTable(int logicalPage){
+  for(int i = max((tlbIdx-TLB_ENTRIES),0); i<tlbIdx;i++){
+    tlbObject entry = tlb[i%TLB_ENTRIES];
+    if(entry.logicalPageNumber == logicalPage){
+      return entry.physicalPageNumber;
+    }
   }
   return -1;
 }
 
-int addToTable(int logicalAddress, int physicalAddress){
-  for(int i=0;i<TLB_ENTRIES;i++){
-    if(tlb[i].logicalPageNumber==0){
-      tlb[i].logicalPageNumber=logicalAddress;
-      tlb[i].physicalPageNumber=physicalAddress;
-      return 0;
-    }
-  }
-  for(int i=1;i<TLB_ENTRIES;i++){
-    tlb[i-1].logicalPageNumber=tlb[i].logicalPageNumber;
-    tlb[i-1].physicalPageNumber=tlb[i].physicalPageNumber;
-  }
-
-
-  tlb[TLB_ENTRIES-1].logicalPageNumber=logicalAddress;
-  tlb[TLB_ENTRIES-1].physicalPageNumber=physicalAddress;
-  return 0;
+void addToTlb(int logicalPage, int physicalPage){
+  tlbObject *newTblObject = &tlb[tlbIdx % TLB_ENTRIES];
+  tlbIdx++;
+  newTblObject->logicalPageNumber = logicalPage;
+  newTblObject->physicalPageNumber = physicalPage;
 }
 
 
 int main(int argc, char *argv[]){
-
-  tlb = malloc(TLB_ENTRIES);
-  printf("%d",tlb[0].logicalPageNumber);
 
   FILE *fp;
   int numAddresses = 0; //total num addresses
@@ -61,8 +66,8 @@ int main(int argc, char *argv[]){
 
   int logicalAddresses; //the int value being read from addresses.txt
 
-  int pageFaults; //page fault rate = % of address references -> page faults
-  int tlbHits; //TLB hit rate = % of addreses references that were resolved in the TLB
+  int pageFaults=0; //page fault rate = % of address references -> page faults
+  int tlbHits=0; //TLB hit rate = % of addreses references that were resolved in the TLB
 
 
   if (argc != 2) {
@@ -78,47 +83,22 @@ int main(int argc, char *argv[]){
     exit(1);
   }
 
+  for(int i = 0; i<PAGES;i++){
+    pageTable[i] = -1;
+  }
+
+  //opening BACKING_STORE.bin
+  char* binFile = "BACKING_STORE.bin";
+  int backingStore = open(binFile,O_RDONLY);
+  backingChars = mmap(0,MEMORY_SIZE,PROT_READ,MAP_PRIVATE,backingStore,0);
 
   // numAddresses = fread(buffer,sizeof(char),sizeof(buffer),fp);
   //sprintf("number of items read=  %d\n", numAddresses);  6831
-
   //printf( "Contents of buffer = %.100000s\n", buffer );
   // printf("%c\n",buffer[0]);
-
-//prints the buffer/addresses
-  int count = 0;
-  // for(int i=0;i<sizeof(buffer);i++){
-  //   printf("buffer: %c\n",buffer[i]);
-  //   printf("buffer atoi:%d \n", atoi(&buffer[i]));
-  //   printf("buffer elem size: %lu \n",sizeof(atoi(&buffer[i])));
-  //   if(buffer[i]=='\n'){
-  //     printf("hi\n");
-  // }
-
-  //
-  //   // numAddresses++;
-  //   // int logicalAddress = atoi(&buffer[i]);
-  //   // printf("logical address: %d\n",logicalAddress);
-  //   // int offset = logicalAddress & OFFSET_MASK;
-  //   // printf("offset: %d\n",offset);
-  //   // int logicalPage = (logicalAddress >> OFFSET) & PAGE_MASK;
-  //   // printf("logical page: %d\n", logicalPage);
-  //   if(count==10){
-  //     break;
-  //   }
-  //   count++;
-  // //
-  // }
-  int *pageTable;
-  pageTable = malloc(PAGES);
-  printf("size: %lu\n",sizeof(pageTable));
-  for(int i = 0; i<sizeof(pageTable);i++){
-    printf("%d",pageTable[i]);
-  }
-
-
-  while(fgets(buffer,6830,fp)!=NULL){
-    printf("%s",buffer);
+  //prints the buffer/addresses
+  while(fgets(buffer,BUFFER_SIZE,fp)!=NULL){
+    //printf("%s",buffer);
     numAddresses++;
     int logicalAddress = atoi(buffer);
     //printf("logical address: %d\n",logicalAddress);
@@ -127,40 +107,40 @@ int main(int argc, char *argv[]){
     int logicalPage = logicalAddress/256;
     //printf("logical page: %s\n", logicalPage);
     int physicalPage=searchTlbTable(logicalPage);
+
+    unsigned int freePage = 0;
     if(physicalPage !=-1){
       tlbHits++;
     }
     else{
-      //calculate physicalPage
+      physicalPage = pageTable[logicalPage];
+      if(physicalPage == -1){
+        pageFaults++;
+        physicalPage = freePage;
+        freePage++;
+        //copy page from backing store file into physical mem
+        memcpy(mainMem+physicalPage*PAGE_SIZE, backingChars+logicalPage*PAGE_SIZE, PAGE_SIZE);
+        pageTable[logicalPage] = physicalPage;
+      }
 
-      addToTable(logicalPage, physicalPage);
+      addToTlb(logicalPage, physicalPage);
     }
 
-    printf("\n ");
-    if(count==5){
-      break;
-    }
-    count++;
+    int physicalAdd = (physicalPage << OFFSET) | offset;
+    signed char value = mainMem[physicalPage*PAGE_SIZE+offset];
+
+     //printf("Logical address: %d Physical Address: %d Value:%d\n",logicalAddress,physicalAdd,value);
   }
 
   fclose(fp);     //close file
 
+  printf("num of translated address = %d\n",numAddresses);
+  printf("Page Faults = %d\n",pageFaults );
+  float pagePercent=(float)pageFaults/numAddresses*100;
+  printf("Page Fault Rate = %f%%\n",pagePercent);
+  printf("TLB Hits = %d\n",tlbHits);
+  float tlbPercent=(float)tlbHits/numAddresses*100;
+  printf("TLB Hit Rate = %f%%\n",tlbPercent);
 
-
-
-
-
-
-
-  //convert int to binary for offset calc
-
-   //read addresses .txt, use fgets()
-    //translate each address and translate it to its corresponding physical addresses
-
-   //read binary file/backing_store.bin binary file
-      //use fopen(),fread(),fseek(), and fclose()
-
-  return (0);
-   //output the value of the signed byte at the physical address
-
+  return 0;
 }
