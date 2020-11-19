@@ -1,3 +1,6 @@
+//Gabriela Pinto and Katherine Hansen
+//
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,7 +42,8 @@ int max(int x,int y){
   }
   return y;
 }
-
+//function to search tlbIdx
+//returns -1 if not in table
 int searchTlbTable(int logicalPage){
   for(int i = max((tlbIdx-TLB_ENTRIES),0); i<tlbIdx;i++){
     tlbObject entry = tlb[i%TLB_ENTRIES];
@@ -49,7 +53,7 @@ int searchTlbTable(int logicalPage){
   }
   return -1;
 }
-
+//adds tlbObject to the tlb using FIFO
 void addToTlb(int logicalPage, int physicalPage){
   tlbObject *newTblObject = &tlb[tlbIdx % TLB_ENTRIES];
   tlbIdx++;
@@ -57,6 +61,15 @@ void addToTlb(int logicalPage, int physicalPage){
   newTblObject->physicalPageNumber = physicalPage;
 }
 
+void printInfo(int numAddresses, int pageFaults, int tlbHits){
+  printf("num of translated address = %d\n",numAddresses);
+  printf("Page Faults = %d\n",pageFaults );
+  float pagePercent=(float)pageFaults/numAddresses*100;
+  printf("Page Fault Rate = %f%%\n",pagePercent);
+  printf("TLB Hits = %d\n",tlbHits);
+  float tlbPercent=(float)tlbHits/numAddresses*100;
+  printf("TLB Hit Rate = %f%%\n",tlbPercent);
+}
 
 int main(int argc, char *argv[]){
 
@@ -75,7 +88,7 @@ int main(int argc, char *argv[]){
        return -1;
    }
 
-   //read addresses.txt
+  //read addresses.txt
   char* fileName = argv[1];
   fp = fopen(fileName, "r");
   if (fp == NULL){
@@ -90,22 +103,19 @@ int main(int argc, char *argv[]){
   //opening BACKING_STORE.bin
   char* binFile = "BACKING_STORE.bin";
   int backingStore = open(binFile,O_RDONLY);
+  if (backingStore == -1){
+    fprintf((stderr), "Backing file didn't open :( \n" );
+    exit(1);
+  }
+
   backingChars = mmap(0,MEMORY_SIZE,PROT_READ,MAP_PRIVATE,backingStore,0);
 
-  // numAddresses = fread(buffer,sizeof(char),sizeof(buffer),fp);
-  //sprintf("number of items read=  %d\n", numAddresses);  6831
-  //printf( "Contents of buffer = %.100000s\n", buffer );
-  // printf("%c\n",buffer[0]);
   //prints the buffer/addresses
   while(fgets(buffer,BUFFER_SIZE,fp)!=NULL){
-    //printf("%s",buffer);
     numAddresses++;
     int logicalAddress = atoi(buffer);
-    //printf("logical address: %d\n",logicalAddress);
     int offset = logicalAddress % 256;
-  //  printf("offset: %s\n",offset);
     int logicalPage = logicalAddress/256;
-    //printf("logical page: %s\n", logicalPage);
     int physicalPage=searchTlbTable(logicalPage);
 
     unsigned int freePage = 0;
@@ -128,19 +138,11 @@ int main(int argc, char *argv[]){
 
     int physicalAdd = (physicalPage << OFFSET) | offset;
     signed char value = mainMem[physicalPage*PAGE_SIZE+offset];
-
-     //printf("Logical address: %d Physical Address: %d Value:%d\n",logicalAddress,physicalAdd,value);
+    printf("Logical address: %d Physical Address: %d Value:%d\n",logicalAddress,physicalAdd,value);
   }
 
   fclose(fp);     //close file
-
-  printf("num of translated address = %d\n",numAddresses);
-  printf("Page Faults = %d\n",pageFaults );
-  float pagePercent=(float)pageFaults/numAddresses*100;
-  printf("Page Fault Rate = %f%%\n",pagePercent);
-  printf("TLB Hits = %d\n",tlbHits);
-  float tlbPercent=(float)tlbHits/numAddresses*100;
-  printf("TLB Hit Rate = %f%%\n",tlbPercent);
+  printInfo(numAddresses,pageFaults,tlbHits);
 
   return 0;
 }
