@@ -1,5 +1,5 @@
-//Gabriela Pinto and Katherine Hansen
-//
+//Gabriela Pinto 2318655
+//Katherine Hansen 2326665
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -111,6 +111,7 @@ int main(int argc, char *argv[]){
   backingChars = mmap(0,MEMORY_SIZE,PROT_READ,MAP_PRIVATE,backingStore,0);
 
   //prints the buffer/addresses
+  int count = 0;
   while(fgets(buffer,BUFFER_SIZE,fp)!=NULL){
     numAddresses++;
     int logicalAddress = atoi(buffer);
@@ -139,6 +140,10 @@ int main(int argc, char *argv[]){
     int physicalAdd = (physicalPage << OFFSET) | offset;
     signed char value = mainMem[physicalPage*PAGE_SIZE+offset];
     printf("Logical address: %d Physical Address: %d Value:%d\n",logicalAddress,physicalAdd,value);
+    count++;
+    if (count==5){
+      break;
+    }
   }
 
   fclose(fp);     //close file
